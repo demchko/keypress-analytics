@@ -1,0 +1,20 @@
+{
+  "name": "keypress-analytics",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "app/client",
+    "app/server"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:client\" \"npm run dev:server\"",
+    "dev:client": "cd app/client && npm run dev",
+    "dev:server": "cd app/server && npm run start:dev",
+    "build": "npm run build:client && npm run build:server",
+    "build:client": "cd app/client && npm run build",
+    "build:server": "cd app/server && npm run build"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
