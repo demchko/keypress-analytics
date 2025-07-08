@@ -7,17 +7,29 @@ import { ConnectionStatus } from '../components/ConnectionStatus';
 import { keypressStore } from '@/stores/KeyPressStore';
 import { KeypressChart } from './KeyPressChart';
 
-export const BasicComp = observer(() => {
+interface KeypressStats {
+    key: string;
+    count: number;
+}
+
+interface ClientPageProps {
+    initialStats: KeypressStats[];
+}
+
+export const BasicComp = observer(({ initialStats }: ClientPageProps) => {
     useKeypress();
 
     useEffect(() => {
+        // Встановлюємо початкову статистику для SEO
+        keypressStore.setInitialStats(initialStats);
+
+        // Ініціалізуємо WebSocket з'єднання
         keypressStore.initSocket();
 
         return () => {
             keypressStore.disconnect();
         };
-    }, []);
-
+    }, [initialStats]);
     return (
         <div className="min-h-screen bg-slate-900">
             <ConnectionStatus />
