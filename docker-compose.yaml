@@ -1,0 +1,330 @@
+# docker-compose.yml (в корені проєкту)
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: keypress_analytics
+      POSTGRES_USER: app_user
+      POSTGRES_PASSWORD: your_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - keypress_network
+
+  server:
+    build:
+      context: ./app/server
+      dockerfile: Dockerfile
+    ports:
+      - "3001:3001"
+    depends_on:
+      - postgres
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USERNAME=app_user
+      - DB_PASSWORD=your_password
+      - DB_NAME=keypress_analytics
+      - CLIENT_URL=http://localhost:3000
+    networks:
+      - keypress_network
+
+  client:
+    build:
+      context: ./app/client
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    depends_on:
+      - server
+    environment:
+      - NEXT_PUBLIC_SERVER_URL=http://localhost:3001
+    networks:
+      - keypress_network
+
+volumes:
+  postgres_data:
+
+networks:
+  keypress_network:
+    driver: bridge
+
+---
+# app/server/Dockerfile
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Копіюємо package.json та package-lock.json
+COPY package*.json ./
+
+# Встановлюємо залежності
+RUN npm ci --only=production
+
+# Копіюємо вихідний код
+COPY . .
+
+# Будуємо додаток
+RUN npm run build
+
+# Відкриваємо порт
+EXPOSE 3001
+
+# Запускаємо додаток
+CMD ["npm", "run", "start:prod"]
+
+---
+# app/client/Dockerfile
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Копіюємо package.json та package-lock.json
+COPY package*.json ./
+
+# Встановлюємо залежності
+RUN npm ci
+
+# Копіюємо вихідний код
+COPY . .
+
+# Будуємо додаток
+RUN npm run build
+
+# Продакшн стадія
+FROM node:18-alpine AS runner
+
+WORKDIR /app
+
+# Створюємо користувача для безпеки
+RUN addgroup --system --gid 1001 nodejs
+RUN adduser --system --uid 1001 nextjs
+
+# Копіюємо необхідні файли
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
+
+# Змінюємо власника файлів
+RUN chown -R nextjs:nodejs /app
+
+USER nextjs
+
+EXPOSE 3000
+
+CMD ["node", "server.js"]
+
+---
+# app/server/package.json (додаткові скрипти)
+{
+  "name": "keypress-server",
+  "version": "1.0.0",
+  "scripts": {
+    "build": "nest build",
+    "start": "nest start",
+    "start:dev": "nest start --watch",
+    "start:debug": "nest start --debug --watch",
+    "start:prod": "node dist/main"
+  },
+  "dependencies": {
+    "@nestjs/common": "^10.0.0",
+    "@nestjs/core": "^10.0.0",
+    "@nestjs/platform-express": "^10.0.0",
+    "@nestjs/websockets": "^10.0.0",
+    "@nestjs/platform-socket.io": "^10.0.0",
+    "@nestjs/typeorm": "^10.0.0",
+    "@nestjs/config": "^3.0.0",
+    "typeorm": "^0.3.17",
+    "pg": "^8.11.0",
+    "socket.io": "^4.7.2",
+    "reflect-metadata": "^0.1.13",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/cli": "^10.0.0",
+    "@nestjs/schematics": "^10.0.0",
+    "@nestjs/testing": "^10.0.0",
+    "@types/node": "^20.3.1",
+    "@types/pg": "^8.10.2",
+    "typescript": "^5.1.3"
+  }
+}
+
+---
+# app/client/next.config.js (повна версія)
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  experimental: {
+    appDir: true,
+  },
+  env: {
+    NEXT_PUBLIC_SERVER_URL: process.env.NEXT_PUBLIC_SERVER_URL || 'http://localhost:3001',
+  },
+  // Для Docker продакшн збірки
+  output: 'standalone',
+  // Оптимізація для SEO
+  generateEtags: false,
+  poweredByHeader: false,
+  compress: true,
+}
+
+module.exports = nextConfig
+
+---
+# .gitignore (в корені проєкту)
+# Dependencies
+node_modules/
+*/node_modules/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build outputs
+dist/
+build/
+.next/
+*/dist/
+*/build/
+*/.next/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Docker
+.dockerignore
+
+---
+# README.md (в корені проєкту)
+# Keypress Analytics
+
+Монорепозиторій для аналітики натискань клавіш з реальним часом відображення статистики.
+
+## Структура проєкту
+
+```
+keypress-analytics/
+├── app/
+│   ├── client/          # Next.js фронтенд
+│   └── server/          # NestJS бекенд
+├── docker-compose.yml   # Docker конфігурація
+└── README.md
+```
+
+## Технології
+
+**Frontend:**
+- Next.js 14
+- TypeScript
+- MobX
+- Tailwind CSS
+- Recharts
+- Socket.io Client
+
+**Backend:**
+- NestJS
+- TypeScript
+- TypeORM
+- PostgreSQL
+- Socket.io
+- WebSocket
+
+## Встановлення та запуск
+
+### Розробка
+
+1. Клонуйте репозиторій:
+```bash
+git clone <repository-url>
+cd keypress-analytics
+```
+
+2. Встановіть залежності:
+```bash
+npm install
+```
+
+3. Запустіть PostgreSQL:
+```bash
+docker-compose up postgres -d
+```
+
+4. Налаштуйте змінні середовища:
+```bash
+# app/server/.env
+DB_HOST=localhost
+DB_PORT=5432
+DB_USERNAME=app_user
+DB_PASSWORD=your_password
+DB_NAME=keypress_analytics
+CLIENT_URL=http://localhost:3000
+
+# app/client/.env.local
+NEXT_PUBLIC_SERVER_URL=http://localhost:3001
+```
+
+5. Запустіть проєкт:
+```bash
+npm run dev
+```
+
+### Продакшн (Docker)
+
+```bash
+docker-compose up --build
+```
+
+## Особливості
+
+- **Реальний час**: WebSocket з'єднання для миттєвого оновлення статистики
+- **SEO оптимізація**: Server-side rendering початкової статистики
+- **Горизонтальний бар-чарт**: Зручна візуалізація даних
+- **Адаптивний дизайн**: Працює на всіх пристроях
+- **Типобезпека**: Повна типізація TypeScript
+
+## API Endpoints
+
+- `GET /api/keypress/stats` - Отримання статистики
+- `WebSocket /` - Реальний час комунікація
+  - `keypress` - Надсилання натискання клавіші
+  - `get-stats` - Запит статистики
+  - `stats-update` - Оновлення статистики
+
+## Архітектура
+
+Проєкт використовує мікросервісну архітектуру з окремими контейнерами для:
+- Frontend (Next.js)
+- Backend (NestJS)
+- Database (PostgreSQL)
+
+Комунікація між сервісами відбувається через HTTP API та WebSocket з'єднання.
